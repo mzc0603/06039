@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="超级马里奥HTML5网页版 - 经典横版闯关游戏，支持手机触屏和电脑键盘">
+    <meta name="keywords" content="马里奥, 超级玛丽, 闯关游戏, HTML5游戏, 经典游戏">
+    <meta name="author" content="Super Mario Web">
+    <meta property="og:title" content="超级马里奥 HTML5">
+    <meta property="og:description" content="在线玩经典超级马里奥闯关游戏">
+    <meta property="og:type" content="game">
+    <title>超级马里奥 HTML5 - 经典横版闯关游戏</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            background: #000;
+            display: flex; justify-content: center; align-items: center;
+        }
+        #gameContainer {
+            position: relative;
+            background: #000;
+        }
+        #gameCanvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            display: block;
+        }
+        #startScreen, #gameOverScreen, #winScreen {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.9);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            z-index: 100;
+        }
+        .title { font-size: clamp(24px, 6vw, 48px); color: #e74c3c; text-shadow: 3px 3px 0 #c0392b; margin-bottom: 20px; }
+        .subtitle { font-size: clamp(14px, 3vw, 20px); color: #f1c40f; margin-bottom: 30px; }
+        .btn {
+            padding: 15px 40px; margin: 10px;
+            font-size: clamp(16px, 3vw, 20px);
+            font-family: inherit;
+            background: linear-gradient(180deg, #27ae60 0%, #1e8449 100%);
+            border: none; border-radius: 8px;
+            color: #fff; cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 4px 0 #145a32;
+            transition: transform 0.1s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn:active { transform: translateY(2px); }
+        #touchControls {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            height: 35%; display: none;
+            justify-content: space-between; align-items: flex-end;
+            padding: 15px; pointer-events: none;
+            touch-action: none;
+        }
+        .touch-btn {
+            pointer-events: auto;
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-weight: bold; color: #fff;
+            user-select: none; -webkit-user-select: none;
+            transition: transform 0.05s, filter 0.05s;
+            touch-action: manipulation;
+        }
+        .touch-btn:active, .touch-btn.active {
+            transform: scale(0.88);
+            filter: brightness(1.3);
+        }
+        #dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 60px);
+            grid-template-rows: repeat(2, 60px);
+            gap: 5px;
+        }
+        #dpad .touch-btn {
+            width: 60px; height: 60px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.3);
+            font-size: 24px;
+        }
+        #jumpBtn {
+            width: 90px; height: 90px;
+            background: rgba(39,174,96,0.5);
+            border: 3px solid rgba(39,174,96,0.8);
+            font-size: 14px;
+        }
+        @media (max-width: 768px) { #touchControls { display: flex; } }
+        @media (max-height: 450px) { #touchControls { height: 45%; } }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="startScreen">
+            <div class="title">超级马里奥</div>
+            <div class="subtitle">HTML5 网页版</div>
+            <button class="btn" onclick="startGame()">开始游戏</button>
+            <div style="margin-top: 30px; color: #888; font-size: 14px;">
+                <p>PC: 方向键移动 | 空格/↑ 跳跃</p>
+                <p style="margin-top: 5px;">手机: 触控按钮操作</p>
+            </div>
+        </div>
+
+        <div id="gameOverScreen" style="display:none;">
+            <div class="title" style="color: #c0392b;">游戏结束</div>
+            <div class="subtitle">得分: <span id="finalScore">0</span></div>
+            <button class="btn" onclick="restartGame()">重新开始</button>
+        </div>
+
+        <div id="winScreen" style="display:none;">
+            <div class="title" style="color: #f1c40f;">恭喜过关!</div>
+            <div class="subtitle">得分: <span id="winScore">0</span></div>
+            <button class="btn" onclick="restartGame()">再玩一次</button>
+        </div>
+
+        <div id="touchControls">
+            <div id="dpad">
+                <div></div>
+                <button class="touch-btn" id="btnUp">▲</button>
+                <div></div>
+                <button class="touch-btn" id="btnLeft">◀</button>
+                <button class="touch-btn" id="btnDown">▼</button>
+                <button class="touch-btn" id="btnRight">▶</button>
+            </div>
+            <button class="touch-btn" id="jumpBtn">跳跃<br>SPACE</button>
+        </div>
+    </div>
+
+    <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const GAME_WIDTH = 256;
+    const GAME_HEIGHT = 240;
+    const SCALE = 3;
+    canvas.width = GAME_WIDTH * SCALE;
+    canvas.height = GAME_HEIGHT * SCALE;
+    ctx.imageSmoothingEnabled = false;
+
+    const GRAVITY = 0.5;
+    const JUMP_FORCE = -10;
+    const MOVE_SPEED = 2.5;
+    const MAX_FALL_SPEED = 8;
+
+    let gameState = 'start';
+    let score = 0;
+    let coins = 0;
+    let lives = 3;
+    let time = 300;
+    let timeInterval = null;
+    let keys = {};
+    let touchKeys = {};
+    let audioCtx = null;
+
+    let mario = null;
+    let entities = [];
+    let particles = [];
+    let cameraX = 0;
+    let levelComplete = false;
+    let isPaused = false;
+
+    class Mario {
+        constructor() {
+            this.x = 40;
+            this.y = 180;
+            this.width = 12;
+            this.height = 16;
+            this.vx = 0;
+            this.vy = 0;
+            this.onGround = false;
+            this.facingRight = true;
+            this.state = 'small';
+            this.invincible = false;
+            this.invincibleTimer = 0;
+            this.animFrame = 0;
+            this.animTimer = 0;
+            this.dead = false;
+            this.deathTimer = 0;
+            this.crouching = false;
+        }
+
+        update() {
+            if (this.dead) {
+                this.deathTimer++;
+                if (this.deathTimer > 60) {
+                    this.vy += GRAVITY;
+                    this.y += this.vy;
+                }
+                return;
+            }
+
+            if (this.invincible) {
+                this.invincibleTimer--;
+                if (this.invincibleTimer <= 0) this.invincible = false;
+            }
+
+            const left = keys['ArrowLeft'] || keys['a'] || touchKeys.left;
+            const right = keys['ArrowRight'] || keys['d'] || touchKeys.right;
+            const jump = keys['ArrowUp'] || keys['w'] || keys[' '] || touchKeys.jump;
+            const down = keys['ArrowDown'] || keys['s'] || touchKeys.down;
+
+            if (left) {
+                this.vx = -MOVE_SPEED;
+                this.facingRight = false;
+            } else if (right) {
+                this.vx = MOVE_SPEED;
+                this.facingRight = true;
+            } else {
+                this.vx = 0;
+            }
+
+            this.crouching = (down && this.state !== 'small');
+
+            if (jump && this.onGround) {
+                this.vy = JUMP_FORCE;
+                this.onGround = false;
+                playSound('jump');
+            }
+
+            this.vy += GRAVITY;
+            if (this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+
+            this.x += this.vx;
+            this.y += this.vy;
+
+            this.onGround = false;
+            this.handleCollisions();
+
+            if (this.x < 0) this.x = 0;
+            if (this.x > LEVEL_WIDTH - this.width) this.x = LEVEL_WIDTH - this.width;
+
+            this.animTimer++;
+            if (this.animTimer > 6) {
+                this.animTimer = 0;
+                this.animFrame = (this.animFrame + 1) % 4;
+            }
+        }
+
+        handleCollisions() {
+            for (const entity of entities) {
+                if (!entity.active) continue;
+
+                if (entity.type === 'pipe' || entity.type === 'brick' || entity.type === 'question' || entity.type === 'ground') {
+                    if (this.intersects(entity)) {
+                        const overlapLeft = (this.x + this.width) - entity.x;
+                        const overlapRight = (entity.x + entity.width) - this.x;
+                        const overlapTop = (this.y + this.height) - entity.y;
+                        const overlapBottom = (entity.y + entity.height) - this.y;
+
+                        const minOverlapX = Math.min(overlapLeft, overlapRight);
+                        const minOverlapY = Math.min(overlapTop, overlapBottom);
+
+                        if (minOverlapY < minOverlapX) {
+                            if (overlapTop < overlapBottom && this.vy >= 0) {
+                                this.y = entity.y - this.height;
+                                this.vy = 0;
+                                this.onGround = true;
+                            } else if (overlapBottom < overlapTop && this.vy < 0) {
+                                this.y = entity.y + entity.height;
+                                this.vy = 0;
+                                this.hitBlock(entity);
+                            }
+                        } else {
+                            if (overlapLeft < overlapRight) {
+                                this.x = entity.x - this.width;
+                            } else {
+                                this.x = entity.x + entity.width;
+                            }
+                            this.vx = 0;
+                        }
+                    }
+                }
+
+                if ((entity.type === 'goomba' || entity.type === 'koopa') && entity.active) {
+                    if (this.intersects(entity)) {
+                        if (this.vy > 0 && this.y + this.height - this.vy <= entity.y + 5) {
+                            entity.stomp();
+                            this.vy = JUMP_FORCE * 0.6;
+                            score += 100;
+                            playSound('stomp');
+                        } else if (!this.invincible) {
+                            this.hit();
+                        }
+                    }
+                }
+
+                if (entity.type === 'coin' && entity.active && this.intersects(entity)) {
+                    entity.collect();
+                }
+
+                if ((entity.type === 'mushroom' || entity.type === 'fireflower' || entity.type === 'oneup') && entity.active && this.intersects(entity)) {
+                    entity.collect();
+                }
+
+                if (entity.type === 'flagpole' && entity.active && this.intersects(entity)) {
+                    this.win();
+                }
+            }
+        }
+
+        hitBlock(block) {
+            if (block.type === 'question') {
+                if (!block.used) {
+                    block.hit();
+                    if (block.contains === 'coin') {
+                        createCoin(block.x + 8, block.y - 20);
+                        playSound('coin');
+                    } else if (block.contains === 'mushroom') {
+                        createMushroom(block.x + 4, block.y);
+                        playSound('powerup');
+                    } else if (block.contains === 'flower') {
+                        createFireflower(block.x + 4, block.y);
+                        playSound('powerup');
+                    }
+                }
+            } else if (block.type === 'brick' && this.state !== 'small') {
+                block.break();
+                playSound('breakblock');
+                score += 10;
+            }
+        }
+
+        hit() {
+            if (this.invincible) return;
+
+            if (this.state === 'small') {
+                this.die();
+            } else {
+                this.state = 'small';
+                this.height = 16;
+                this.invincible = true;
+                this.invincibleTimer = 120;
+                playSound('shrink');
+            }
+        }
+
+        die() {
+            this.dead = true;
+            this.vy = JUMP_FORCE;
+            playSound('death');
+            lives--;
+
+            setTimeout(() => {
+                if (lives <= 0) {
+                    showGameOver();
+                } else {
+                    resetMario();
+                }
+            }, 2000);
+        }
+
+        win() {
+            if (levelComplete) return;
+            levelComplete = true;
+            playSound('win');
+            score += 2000 + time * 50;
+
+            setTimeout(() => {
+                showWin();
+            }, 3000);
+        }
+
+        intersects(entity) {
+            return this.x < entity.x + entity.width &&
+                   this.x + this.width > entity.x &&
+                   this.y < entity.y + entity.height &&
+                   this.y + this.height > entity.y;
+        }
+
+        draw() {
+            if (this.dead && this.deathTimer % 10 < 5) return;
+            if (this.invincible && Math.floor(this.invincibleTimer / 4) % 2 === 0) return;
+
+            ctx.save();
+            ctx.translate((this.x - cameraX) * SCALE, this.y * SCALE);
+            if (!this.facingRight) {
+                ctx.scale(-1, 1);
+                ctx.translate(-this.width * SCALE, 0);
+            }
+
+            const h = this.state === 'small' ? 16 : 24;
+            const yOffset = this.state === 'small' ? 0 : -8;
+
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(4 * SCALE, (yOffset + 5) * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect(4 * SCALE, (yOffset + 10) * SCALE, 4 * SCALE, 4 * SCALE);
+
+            ctx.fillStyle = '#c0392b';
+            ctx.fillRect(0, (yOffset + 8) * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect(8 * SCALE, (yOffset + 8) * SCALE, 4 * SCALE, 4 * SCALE);
+
+            ctx.fillStyle = '#f5d7b8';
+            ctx.fillRect(4 * SCALE, (yOffset + 2) * SCALE, 4 * SCALE, 4 * SCALE);
+
+            if (this.state !== 'small') {
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(4 * SCALE, (yOffset - 2) * SCALE, 4 * SCALE, 4 * SCALE);
+            }
+
+            ctx.restore();
+        }
+    }
+
+    class Entity {
+        constructor(x, y, width, height, type) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.type = type;
+            this.active = true;
+        }
+    }
+
+    class Brick extends Entity {
+        constructor(x, y) {
+            super(x, y, 16, 16, 'brick');
+        }
+
+        break() {
+            this.active = false;
+            for (let i = 0; i < 4; i++) {
+                particles.push({
+                    x: this.x + 8,
+                    y: this.y + 8,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: -Math.random() * 6,
+                    size: 4,
+                    color: '#c0392b',
+                    life: 30
+                });
+            }
+        }
+
+        draw() {
+            ctx.fillStyle = '#c0392b';
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, 16 * SCALE, 16 * SCALE);
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect((this.x - cameraX) * SCALE + 2 * SCALE, this.y * SCALE + 2 * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect((this.x - cameraX) * SCALE + 10 * SCALE, this.y * SCALE + 2 * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect((this.x - cameraX) * SCALE + 2 * SCALE, this.y * SCALE + 10 * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect((this.x - cameraX) * SCALE + 10 * SCALE, this.y * SCALE + 10 * SCALE, 4 * SCALE, 4 * SCALE);
+        }
+    }
+
+    class QuestionBlock extends Entity {
+        constructor(x, y, contains = 'coin') {
+            super(x, y, 16, 16, 'question');
+            this.contains = contains;
+            this.used = false;
+            this.bounceOffset = 0;
+            this.bouncing = false;
+        }
+
+        hit() {
+            this.bouncing = true;
+            if (this.contains !== 'coin') {
+                this.used = true;
+            } else {
+                coins++;
+                score += 200;
+            }
+        }
+
+        update() {
+            if (this.bouncing) {
+                this.bounceOffset = Math.sin(Date.now() / 50) * 3;
+                if (Date.now() % 200 < 10) {
+                    this.bounceOffset = 0;
+                    this.bouncing = false;
+                }
+            }
+        }
+
+        draw() {
+            ctx.fillStyle = this.used ? '#7f8c8d' : '#f1c40f';
+            ctx.fillRect((this.x - cameraX) * SCALE, (this.y + this.bounceOffset) * SCALE, 16 * SCALE, 16 * SCALE);
+
+            if (!this.used) {
+                ctx.fillStyle = '#f39c12';
+                ctx.fillRect((this.x - cameraX) * SCALE + 4 * SCALE, (this.y + this.bounceOffset) * SCALE + 4 * SCALE, 8 * SCALE, 8 * SCALE);
+                ctx.fillStyle = '#fff';
+                ctx.font = `${8 * SCALE}px Arial`;
+                ctx.fillText('?', (this.x - cameraX + 4) * SCALE, (this.y + this.bounceOffset + 12) * SCALE);
+            }
+        }
+    }
+
+    class Pipe extends Entity {
+        constructor(x, y, height = 32) {
+            super(x, y, 32, height, 'pipe');
+            this.height = height;
+        }
+
+        draw() {
+            const x = (this.x - cameraX) * SCALE;
+            ctx.fillStyle = '#27ae60';
+            ctx.fillRect(x, this.y * SCALE, 32 * SCALE, this.height * SCALE);
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(x + 4 * SCALE, this.y * SCALE, 8 * SCALE, this.height * SCALE);
+            ctx.fillStyle = '#1e8449';
+            ctx.fillRect(x + 24 * SCALE, this.y * SCALE, 8 * SCALE, this.height * SCALE);
+        }
+    }
+
+    class Ground extends Entity {
+        constructor(x, y, width, height = 16) {
+            super(x, y, width, height, 'ground');
+        }
+
+        draw() {
+            ctx.fillStyle = '#8b4513';
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, this.width * SCALE, this.height * SCALE);
+            ctx.fillStyle = '#27ae60';
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, this.width * SCALE, 4 * SCALE);
+        }
+    }
+
+    class Goomba extends Entity {
+        constructor(x, y) {
+            super(x, y, 16, 16, 'goomba');
+            this.vx = -0.5;
+            this.deadTimer = 0;
+            this.stomped = false;
+        }
+
+        update() {
+            if (this.stomped) {
+                this.deadTimer++;
+                if (this.deadTimer > 30) this.active = false;
+                return;
+            }
+
+            this.x += this.vx;
+
+            for (const entity of entities) {
+                if ((entity.type === 'brick' || entity.type === 'pipe' || entity.type === 'ground') && this.intersects(entity)) {
+                    if (this.vx < 0) {
+                        this.x = entity.x + entity.width;
+                    } else {
+                        this.x = entity.x - this.width;
+                    }
+                    this.vx = -this.vx;
+                }
+            }
+
+            if (this.y > GAME_HEIGHT + 50) this.active = false;
+        }
+
+        intersects(entity) {
+            return this.x < entity.x + entity.width &&
+                   this.x + this.width > entity.x &&
+                   this.y < entity.y + entity.height &&
+                   this.y + this.height > entity.y;
+        }
+
+        stomp() {
+            this.stomped = true;
+            this.vy = -4;
+        }
+
+        draw() {
+            if (this.stomped && this.deadTimer % 6 < 3) return;
+
+            ctx.fillStyle = '#8b4513';
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, 16 * SCALE, 16 * SCALE);
+            ctx.fillStyle = '#000';
+            ctx.fillRect((this.x - cameraX + 2) * SCALE, (this.y + 4) * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect((this.x - cameraX + 10) * SCALE, (this.y + 4) * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect((this.x - cameraX + 6) * SCALE, (this.y + 10) * SCALE, 4 * SCALE, 6 * SCALE);
+        }
+    }
+
+    class Koopa extends Entity {
+        constructor(x, y) {
+            super(x, y, 16, 24, 'koopa');
+            this.vx = -0.5;
+            this.deadTimer = 0;
+            this.shell = false;
+            this.shellMoving = false;
+        }
+
+        update() {
+            if (this.shell) {
+                if (this.shellMoving) {
+                    this.x += this.vx;
+                }
+            } else {
+                this.y += this.vy;
+                if (this.y < 208) this.vy += GRAVITY;
+                if (this.y > 208) this.y = 208;
+
+                this.x += this.vx;
+
+                for (const entity of entities) {
+                    if ((entity.type === 'brick' || entity.type === 'pipe' || entity.type === 'ground') && this.intersects(entity)) {
+                        if (this.vx < 0) {
+                            this.x = entity.x + entity.width;
+                        } else {
+                            this.x = entity.x - this.width;
+                        }
+                        this.vx = -this.vx;
+                    }
+                }
+            }
+
+            if (this.x < cameraX - 50 || this.x > cameraX + GAME_WIDTH + 50) this.active = false;
+        }
+
+        intersects(entity) {
+            return this.x < entity.x + entity.width &&
+                   this.x + this.width > entity.x &&
+                   this.y < entity.y + entity.height &&
+                   this.y + this.height > entity.y;
+        }
+
+        stomp() {
+            if (!this.shell) {
+                this.shell = true;
+                this.height = 16;
+                this.vy = 0;
+                playSound('stomp');
+            } else if (!this.shellMoving) {
+                this.shellMoving = true;
+                this.vx = mario.facingRight ? 6 : -6;
+            }
+        }
+
+        draw() {
+            const x = (this.x - cameraX) * SCALE;
+            ctx.fillStyle = '#27ae60';
+            ctx.fillRect(x, this.y * SCALE, 16 * SCALE, (this.shell ? 16 : 24) * SCALE);
+            ctx.fillStyle = '#f1c40f';
+            ctx.fillRect(x + 4 * SCALE, (this.y + 6) * SCALE, 8 * SCALE, 4 * SCALE);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(x + 2 * SCALE, (this.y + 2) * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect(x + 10 * SCALE, (this.y + 2) * SCALE, 4 * SCALE, 4 * SCALE);
+        }
+    }
+
+    class Coin extends Entity {
+        constructor(x, y, fromBlock = false) {
+            super(x, y, 8, 12, 'coin');
+            this.fromBlock = fromBlock;
+            this.startY = y;
+            this.collected = false;
+            this.timer = 0;
+        }
+
+        collect() {
+            if (this.collected) return;
+            this.collected = true;
+            this.active = false;
+            coins++;
+            score += 200;
+            playSound('coin');
+        }
+
+        update() {
+            if (this.fromBlock && !this.collected) {
+                this.timer++;
+                this.y = this.startY - Math.sin(this.timer * 0.1) * 20;
+                if (this.timer > 30) {
+                    this.y = this.startY;
+                    this.collect();
+                }
+            }
+        }
+
+        draw() {
+            if (this.collected) return;
+            ctx.fillStyle = '#f1c40f';
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, 8 * SCALE, 12 * SCALE);
+            ctx.fillStyle = '#f39c12';
+            ctx.fillRect((this.x - cameraX + 2) * SCALE, (this.y + 2) * SCALE, 4 * SCALE, 8 * SCALE);
+        }
+    }
+
+    class Mushroom extends Entity {
+        constructor(x, y) {
+            super(x, y, 14, 14, 'mushroom');
+            this.vy = -2;
+            this.startY = y;
+            this.emerging = true;
+            this.emergeTimer = 0;
+        }
+
+        update() {
+            if (this.emerging) {
+                this.emergeTimer++;
+                if (this.emergeTimer > 30) {
+                    this.emerging = false;
+                }
+                return;
+            }
+
+            this.vy += GRAVITY;
+            this.y += this.vy;
+            this.x += this.vx || 0.5;
+
+            if (this.y > this.startY) {
+                this.y = this.startY;
+                this.vy = 0;
+            }
+
+            for (const entity of entities) {
+                if ((entity.type === 'ground' || entity.type === 'brick' || entity.type === 'question') && this.intersects(entity)) {
+                    if (this.vy > 0) {
+                        this.y = entity.y - this.height;
+                        this.vy = 0;
+                    }
+                    if (entity.type !== 'question' || !entity.used) {
+                        if (this.vx > 0) this.x = entity.x - this.width;
+                        else if (this.vx < 0) this.x = entity.x + entity.width;
+                        this.vx = -this.vx;
+                    }
+                }
+            }
+        }
+
+        intersects(entity) {
+            return this.x < entity.x + entity.width &&
+                   this.x + this.width > entity.x &&
+                   this.y < entity.y + entity.height &&
+                   this.y + this.height > entity.y;
+        }
+
+        collect() {
+            this.active = false;
+            if (mario.state === 'small') {
+                mario.state = 'big';
+                mario.height = 24;
+                mario.y -= 8;
+                playSound('powerup');
+            } else {
+                score += 1000;
+                playSound('oneup');
+            }
+        }
+
+        draw() {
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, 14 * SCALE, 14 * SCALE);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect((this.x - cameraX + 2) * SCALE, (this.y + 2) * SCALE, 4 * SCALE, 4 * SCALE);
+            ctx.fillRect((this.x - cameraX + 8) * SCALE, (this.y + 2) * SCALE, 4 * SCALE, 4 * SCALE);
+        }
+    }
+
+    class Fireflower extends Entity {
+        constructor(x, y) {
+            super(x, y, 12, 16, 'fireflower');
+            this.vy = -2;
+            this.startY = y;
+            this.emerging = true;
+            this.emergeTimer = 0;
+            this.animFrame = 0;
+        }
+
+        update() {
+            if (this.emerging) {
+                this.emergeTimer++;
+                if (this.emergeTimer > 30) {
+                    this.emerging = false;
+                }
+                return;
+            }
+
+            this.vy += GRAVITY;
+            this.y += this.vy;
+
+            if (this.y > this.startY) {
+                this.y = this.startY;
+                this.vy = 0;
+            }
+
+            this.animFrame++;
+        }
+
+        collect() {
+            this.active = false;
+            mario.state = 'fire';
+            mario.height = 24;
+            mario.y -= 8;
+            playSound('powerup');
+        }
+
+        draw() {
+            const colors = ['#e74c3c', '#f1c40f', '#fff'];
+            const color = colors[Math.floor(this.animFrame / 10) % 3];
+
+            ctx.fillStyle = color;
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, 12 * SCALE, 16 * SCALE);
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect((this.x - cameraX) * SCALE, (this.y - 4) * SCALE, 12 * SCALE, 4 * SCALE);
+        }
+    }
+
+    class Flagpole extends Entity {
+        constructor(x, y) {
+            super(x, y - 160, 8, 160, 'flagpole');
+            this.flagY = y - 48;
+        }
+
+        draw() {
+            ctx.fillStyle = '#7f8c8d';
+            ctx.fillRect((this.x - cameraX) * SCALE, this.y * SCALE, 8 * SCALE, 160 * SCALE);
+
+            ctx.fillStyle = '#27ae60';
+            ctx.beginPath();
+            ctx.moveTo((this.x - cameraX) * SCALE, this.flagY * SCALE);
+            ctx.lineTo((this.x - cameraX + 20) * SCALE, (this.flagY + 10) * SCALE);
+            ctx.lineTo((this.x - cameraX) * SCALE, (this.flagY + 20) * SCALE);
+            ctx.fill();
+        }
+    }
+
+    const LEVEL_WIDTH = 2144;
+
+    function createLevel() {
+        entities = [];
+
+        entities.push(new Ground(0, 224, LEVEL_WIDTH));
+
+        entities.push(new Ground(0, 208, 288));
+        entities.push(new Ground(304, 208, 96));
+        entities.push(new Ground(416, 208, 448));
+
+        entities.push(new Ground(880, 208, 96));
+        entities.push(new Ground(992, 208, 320));
+
+        entities.push(new Ground(1328, 208, 816));
+
+        for (let i = 0; i < 7; i++) {
+            entities.push(new Brick(136 + i * 16, 160));
+        }
+
+        entities.push(new QuestionBlock(168, 144, 'mushroom'));
+        entities.push(new QuestionBlock(280, 144, 'coin'));
+        entities.push(new QuestionBlock(296, 144, 'coin'));
+        entities.push(new QuestionBlock(312, 144, 'coin'));
+
+        for (let i = 0; i < 5; i++) {
+            entities.push(new Brick(352 + i * 16, 144));
+        }
+
+        entities.push(new QuestionBlock(448, 144, 'flower'));
+
+        for (let i = 0; i < 8; i++) {
+            entities.push(new Brick(496 + i * 16, 144));
+        }
+
+        entities.push(new Pipe(544, 192, 32));
+
+        entities.push(new Ground(1072, 208, 256));
+
+        for (let i = 0; i < 4; i++) {
+            entities.push(new Brick(1104 + i * 16, 160));
+            entities.push(new Brick(1104 + i * 16, 144));
+        }
+        entities.push(new QuestionBlock(1136, 112, 'mushroom'));
+
+        for (let i = 0; i < 5; i++) {
+            entities.push(new Brick(1200 + i * 16, 144));
+        }
+
+        entities.push(new Pipe(1344, 176, 48));
+        entities.push(new Pipe(1408, 160, 64));
+
+        entities.push(new QuestionBlock(1472, 144, 'coin'));
+        entities.push(new QuestionBlock(1488, 144, 'coin'));
+
+        for (let i = 0; i < 6; i++) {
+            entities.push(new Brick(1520 + i * 16, 144));
+        }
+
+        entities.push(new QuestionBlock(1584, 112, '1up'));
+        entities.push(new QuestionBlock(1616, 144, 'coin'));
+
+        entities.push(new Ground(1680, 208, 464));
+
+        for (let i = 0; i < 5; i++) {
+            entities.push(new Brick(1696 + i * 16, 144));
+        }
+
+        entities.push(new QuestionBlock(1776, 112, 'mushroom'));
+        entities.push(new QuestionBlock(1808, 112, 'flower'));
+
+        for (let i = 0; i < 5; i++) {
+            entities.push(new Brick(1856 + i * 16, 144));
+        }
+
+        entities.push(new Pipe(1920, 176, 48));
+        entities.push(new Pipe(1984, 160, 64));
+        entities.push(new Pipe(2048, 144, 80));
+
+        entities.push(new Flagpole(2080, 224));
+
+        entities.push(new Goomba(260, 208));
+        entities.push(new Goomba(420, 208));
+        entities.push(new Goomba(430, 208));
+
+        entities.push(new Goomba(680, 208));
+        entities.push(new Goomba(700, 208));
+        entities.push(new Koopa(760, 192));
+
+        entities.push(new Goomba(1050, 208));
+
+        entities.push(new Goomba(1250, 208));
+        entities.push(new Koopa(1300, 192));
+
+        entities.push(new Goomba(1550, 208));
+        entities.push(new Goomba(1565, 208));
+        entities.push(new Koopa(1620, 192));
+
+        entities.push(new Goomba(1750, 208));
+        entities.push(new Goomba(1800, 208));
+        entities.push(new Koopa(1880, 192));
+    }
+
+    function createCoin(x, y) {
+        entities.push(new Coin(x, y, true));
+    }
+
+    function createMushroom(x, y) {
+        entities.push(new Mushroom(x, y));
+    }
+
+    function createFireflower(x, y) {
+        entities.push(new Fireflower(x, y));
+    }
+
+    function initAudio() {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {}
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+
+        try {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            switch (type) {
+                case 'jump':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                    break;
+
+                case 'coin':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(988, now);
+                    osc.frequency.setValueAtTime(1319, now + 0.05);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                    break;
+
+                case 'stomp':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                    break;
+
+                case 'powerup':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.exponentialRampToValueAtTime(800, now + 0.2);
+                    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                    break;
+
+                case 'death':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                    break;
+
+                case 'win':
+                    const notes = [523, 659, 784, 1047];
+                    notes.forEach((freq, i) => {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.connect(g);
+                        g.connect(audioCtx.destination);
+                        o.type = 'square';
+                        o.frequency.setValueAtTime(freq, now + i * 0.15);
+                        g.gain.setValueAtTime(0.1, now + i * 0.15);
+                        g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.15 + 0.2);
+                        o.start(now + i * 0.15);
+                        o.stop(now + i * 0.15 + 0.2);
+                    });
+                    break;
+
+                case 'shrink':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                    break;
+            }
+        } catch (e) {}
+    }
+
+    function setupControls() {
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ') e.preventDefault();
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+    }
+
+    function setupTouchControls() {
+        const setupBtn = (id, onPress, onRelease) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                btn.classList.add('active');
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                onPress();
+            }, { passive: false });
+
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                btn.classList.remove('active');
+                onRelease();
+            }, { passive: false });
+
+            btn.addEventListener('touchcancel', () => {
+                btn.classList.remove('active');
+                onRelease();
+            });
+        };
+
+        setupBtn('btnLeft', () => { touchKeys.left = true; }, () => { touchKeys.left = false; });
+        setupBtn('btnRight', () => { touchKeys.right = true; }, () => { touchKeys.right = false; });
+        setupBtn('btnUp', () => { touchKeys.jump = true; }, () => { touchKeys.jump = false; });
+        setupBtn('jumpBtn', () => { touchKeys.jump = true; }, () => { touchKeys.jump = false; });
+    }
+
+    function resetMario() {
+        mario = new Mario();
+        cameraX = 0;
+        score = 0;
+        coins = 0;
+        time = 300;
+        levelComplete = false;
+        createLevel();
+        document.getElementById('gameOverScreen').style.display = 'none';
+        document.getElementById('winScreen').style.display = 'none';
+        document.getElementById('startScreen').style.display = 'none';
+        gameState = 'playing';
+
+        if (timeInterval) clearInterval(timeInterval);
+        timeInterval = setInterval(() => {
+            if (gameState === 'playing' && time > 0) {
+                time--;
+                if (time <= 0) {
+                    mario.die();
+                }
+            }
+        }, 1000);
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    function startGame() {
+        initAudio();
+        lives = 3;
+        resetMario();
+    }
+
+    function restartGame() {
+        lives = 3;
+        resetMario();
+    }
+
+    function showGameOver() {
+        gameState = 'gameover';
+        if (timeInterval) clearInterval(timeInterval);
+        document.getElementById('finalScore').textContent = score;
+        document.getElementById('gameOverScreen').style.display = 'flex';
+    }
+
+    function showWin() {
+        gameState = 'win';
+        if (timeInterval) clearInterval(timeInterval);
+        document.getElementById('winScore').textContent = score;
+        document.getElementById('winScreen').style.display = 'flex';
+    }
+
+    function update() {
+        if (gameState !== 'playing') return;
+        if (mario.dead) {
+            mario.update();
+            return;
+        }
+
+        mario.update();
+
+        cameraX = mario.x - GAME_WIDTH / 3;
+        if (cameraX < 0) cameraX = 0;
+        if (cameraX > LEVEL_WIDTH - GAME_WIDTH) cameraX = LEVEL_WIDTH - GAME_WIDTH;
+
+        for (const entity of entities) {
+            if (entity.active) {
+                if (entity.update) entity.update();
+            }
+        }
+
+        particles = particles.filter(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.3;
+            p.life--;
+            return p.life > 0;
+        });
+    }
+
+    function render() {
+        ctx.fillStyle = '#5c94fc';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#87ceeb';
+        ctx.fillRect(0, 0, canvas.width, 180 * SCALE);
+
+        ctx.fillStyle = '#fff';
+        for (let i = 0; i < 5; i++) {
+            ctx.beginPath();
+            ctx.arc((100 + i * 200 - cameraX * 0.1) * SCALE, 50 * SCALE, 20 * SCALE, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        for (const entity of entities) {
+            if (entity.active && entity.x > cameraX - 50 && entity.x < cameraX + GAME_WIDTH + 50) {
+                entity.draw();
+            }
+        }
+
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.fillRect((p.x - cameraX) * SCALE, p.y * SCALE, p.size * SCALE, p.size * SCALE);
+        });
+
+        if (mario) mario.draw();
+
+        drawUI();
+    }
+
+    function drawUI() {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, canvas.width, 24 * SCALE);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = `${10 * SCALE}px 'Courier New'`;
+        ctx.fillText(`分数: ${score}`, 8 * SCALE, 16 * SCALE);
+
+        ctx.fillStyle = '#f1c40f';
+        ctx.fillText(`金币: ${coins}`, 100 * SCALE, 16 * SCALE);
+
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillText(`生命: ${lives}`, 180 * SCALE, 16 * SCALE);
+
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`时间: ${time}`, GAME_WIDTH * SCALE / 2 - 30 * SCALE, 16 * SCALE);
+    }
+
+    function gameLoop() {
+        if (gameState !== 'playing') return;
+
+        update();
+        render();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    setupControls();
+    setupTouchControls();
+    </script>
+</body>
+</html>
