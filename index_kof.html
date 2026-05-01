@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="像素拳皇 - 经典2D像素格斗网页游戏">
+    <title>像素拳皇</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; font-family: 'Courier New', monospace; }
+        #gameContainer { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background: linear-gradient(180deg, #16213e 0%, #1a1a2e 100%); }
+        #gameCanvas { image-rendering: pixelated; max-width: 100%; max-height: 100%; }
+        #touchControls { position: absolute; bottom: 0; left: 0; right: 0; height: 35%; display: none; justify-content: space-between; padding: 15px; pointer-events: none; touch-action: none; }
+        .touch-btn { pointer-events: auto; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; color: #fff; user-select: none; -webkit-user-select: none; transition: transform 0.05s, filter 0.05s; touch-action: manipulation; }
+        .touch-btn:active, .touch-btn.active { transform: scale(0.88); filter: brightness(1.3); }
+        #dpad { display: grid; grid-template-columns: repeat(3, 65px); grid-template-rows: repeat(3, 65px); gap: 5px; }
+        #dpad .touch-btn { width: 65px; height: 65px; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.25); font-size: 22px; }
+        #actionBtns { display: grid; grid-template-columns: repeat(3, 72px); grid-template-rows: repeat(2, 72px); gap: 8px; }
+        #actionBtns .touch-btn { width: 72px; height: 72px; background: rgba(231,76,60,0.45); border: 3px solid rgba(231,76,60,0.8); font-size: 13px; line-height: 1.3; }
+        #actionBtns .touch-btn.special { background: rgba(241,196,15,0.45); border-color: rgba(241,196,15,0.8); }
+        #actionBtns .touch-btn.block-btn { background: rgba(52,152,219,0.45); border-color: rgba(52,152,219,0.8); }
+        #startScreen, #selectScreen, #gameOverScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(10,10,20,0.95); color: #fff; z-index: 100; }
+        .screen-title { font-size: clamp(28px, 6vw, 64px); color: #e74c3c; text-shadow: 4px 4px 0 #c0392b, 6px 6px 0 rgba(0,0,0,0.5); margin-bottom: 30px; }
+        .menu-btn { padding: 15px 50px; margin: 10px; font-size: clamp(16px, 3vw, 24px); font-family: inherit; background: linear-gradient(180deg, #e74c3c 0%, #c0392b 100%); border: none; border-radius: 8px; color: #fff; cursor: pointer; text-transform: uppercase; box-shadow: 0 4px 0 #922b21; transition: transform 0.1s; }
+        .menu-btn:hover { transform: translateY(-2px); }
+        .menu-btn:active { transform: translateY(2px); }
+        .character-select { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }
+        .char-btn { width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 3px solid rgba(255,255,255,0.3); border-radius: 10px; color: #fff; font-size: 14px; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.2s; }
+        .char-btn:hover, .char-btn.selected { background: rgba(231,76,60,0.3); border-color: #e74c3c; }
+        .char-icon { font-size: 40px; margin-bottom: 5px; }
+        @media (max-width: 768px) { #touchControls { display: flex; } }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="startScreen">
+            <div class="screen-title">像素拳皇</div>
+            <button class="menu-btn" onclick="startGame()">开始游戏</button>
+            <button class="menu-btn" onclick="backToHome()">返回主页</button>
+        </div>
+
+        <div id="selectScreen" style="display:none;">
+            <div class="screen-title" style="font-size: clamp(20px, 4vw, 36px);">选择角色</div>
+            <div class="character-select" id="playerSelect"></div>
+            <button class="menu-btn" onclick="startFight()">开始战斗</button>
+        </div>
+
+        <div id="gameOverScreen" style="display:none;">
+            <div class="screen-title" id="winnerText">玩家胜利!</div>
+            <button class="menu-btn" onclick="restartGame()">再来一局</button>
+            <button class="menu-btn" onclick="backToHome()">返回主页</button>
+        </div>
+
+        <div id="touchControls">
+            <div id="dpad">
+                <div></div><button class="touch-btn" id="btnUp">▲</button><div></div>
+                <button class="touch-btn" id="btnLeft">◀</button><button class="touch-btn" id="btnDown">▼</button><button class="touch-btn" id="btnRight">▶</button>
+            </div>
+            <div id="actionBtns">
+                <button class="touch-btn" id="btnLightPunch">轻拳</button>
+                <button class="touch-btn" id="btnHeavyPunch">重拳</button>
+                <button class="touch-btn special" id="btnSpecial">必杀</button>
+                <button class="touch-btn" id="btnLightKick">轻腿</button>
+                <button class="touch-btn" id="btnHeavyKick">重腿</button>
+                <button class="touch-btn block-btn" id="btnBlock">防御</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const CHARACTERS = [
+        { id: 'dragon', name: '龙', icon: '🐉', hp: 100, speed: 5, attack: 10, color: '#3498db' },
+        { id: 'tiger', name: '虎', icon: '🐯', hp: 80, speed: 8, attack: 8, color: '#e67e22' },
+        { id: 'bear', name: '熊', icon: '🐻', hp: 130, speed: 3, attack: 15, color: '#8b4513' },
+        { id: 'crane', name: '鹤', icon: '🦢', hp: 90, speed: 6, attack: 12, color: '#9b59b6' }
+    ];
+
+    const BASE_WIDTH = 960, BASE_HEIGHT = 540, GROUND_Y = 420, GRAVITY = 0.8, JUMP_FORCE = -16;
+
+    let canvas, ctx, gameState = 'start', player1, player2, selectedChar = 0, timer = 99, audioCtx = null, keys = {}, touchKeys = {};
+
+    class Fighter {
+        constructor(char, x, isPlayer) {
+            this.char = char; this.x = x; this.y = GROUND_Y; this.width = 64; this.height = 80;
+            this.vx = 0; this.vy = 0; this.hp = char.hp; this.maxHp = char.hp; this.speed = char.speed;
+            this.attackPower = char.attack; this.specialMeter = 0; this.isPlayer = isPlayer;
+            this.facingRight = isPlayer; this.isJumping = false; this.isAttacking = false;
+            this.attackFrame = 0; this.isHit = false; this.isDead = false;
+        }
+
+        update(opponent) {
+            if (this.isDead) return;
+            if (this.attackFrame > 0 && --this.attackFrame === 0) { this.isAttacking = false; }
+            
+            this.vy += GRAVITY;
+            this.x += this.vx;
+            this.y += this.vy;
+            
+            if (this.y >= GROUND_Y) { this.y = GROUND_Y; this.vy = 0; this.isJumping = false; }
+            if (this.x < 20) this.x = 20;
+            if (this.x > BASE_WIDTH - 84) this.x = BASE_WIDTH - 84;
+            if (opponent) this.facingRight = opponent.x > this.x;
+            this.vx *= 0.85;
+        }
+
+        moveLeft() { if (!this.isAttacking) this.vx = -this.speed; }
+        moveRight() { if (!this.isAttacking) this.vx = this.speed; }
+        jump() { if (!this.isJumping) { this.vy = JUMP_FORCE; this.isJumping = true; } }
+        attack(type) {
+            if (this.isAttacking) return;
+            const config = { lightPunch: {d:15, dm:5}, heavyPunch:{d:25,dm:12}, lightKick:{d:18,dm:6}, heavyKick:{d:30,dm:14} };
+            this.isAttacking = true; this.attackFrame = config[type].d; this.attackDamage = config[type].dm + this.attackPower * 0.5;
+        }
+        specialAttack() {
+            if (this.specialMeter < 100 || this.isAttacking) return;
+            this.specialMeter = 0; this.isAttacking = true; this.attackFrame = 45; this.attackDamage = this.char.hp * 0.4;
+        }
+        takeDamage(dmg) {
+            this.hp -= dmg; this.isHit = true;
+            this.specialMeter = Math.min(100, this.specialMeter + 10);
+            if (this.hp <= 0) { this.isDead = true; }
+        }
+        getHitbox() { return {x:this.x, y:this.y-this.height, width:this.width, height:this.height}; }
+        getAttackBox() {
+            if (!this.isAttacking || this.attackFrame < 5) return null;
+            const offset = this.facingRight ? this.width : -80;
+            return {x:this.x + offset, y:this.y - this.height * 0.7, width:80, height:40};
+        }
+
+        draw() {
+            ctx.save();
+            const sx = this.facingRight ? 1 : -1;
+            ctx.translate(this.facingRight ? this.x : this.x + this.width, this.y);
+            ctx.scale(sx, 1);
+            
+            ctx.fillStyle = this.char.color;
+            ctx.fillRect(0, -this.height, this.width, this.height);
+            
+            ctx.fillStyle = '#222';
+            ctx.fillRect(15, -this.height + 20, 12, 12);
+            ctx.fillRect(37, -this.height + 20, 12, 12);
+            
+            ctx.restore();
+        }
+    }
+
+    function init() {
+        canvas = document.getElementById('gameCanvas');
+        ctx = canvas.getContext('2d');
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        setupControls();
+        document.getElementById('startScreen').style.display = 'flex';
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+    }
+
+    function resizeCanvas() {
+        const scale = Math.min(window.innerWidth/BASE_WIDTH, window.innerHeight/BASE_HEIGHT);
+        canvas.width = BASE_WIDTH; canvas.height = BASE_HEIGHT;
+        canvas.style.width = BASE_WIDTH * scale + 'px'; canvas.style.height = BASE_HEIGHT * scale + 'px';
+    }
+
+    function setupControls() {
+        document.addEventListener('keydown', e => {
+            keys[e.key.toLowerCase()] = true;
+            if (gameState === 'fight' && player1) {
+                if (e.key === 'w') player1.jump();
+                if (e.key === 'j') player1.attack('lightPunch');
+                if (e.key === 'k') player1.attack('heavyPunch');
+                if (e.key === 'l') player1.attack('lightKick');
+                if (e.key === ';') player1.attack('heavyKick');
+                if (e.key === 'u') player1.specialAttack();
+            }
+        });
+        document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+        ['btnLeft', 'btnRight', 'btnUp', 'btnDown'].forEach(id => {
+            document.getElementById(id)?.addEventListener('touchstart', e => {
+                e.preventDefault();
+                if (id === 'btnLeft') touchKeys.left = true;
+                if (id === 'btnRight') touchKeys.right = true;
+                if (id === 'btnUp' && player1) player1.jump();
+            });
+            document.getElementById(id)?.addEventListener('touchend', e => {
+                e.preventDefault();
+                if (id === 'btnLeft') touchKeys.left = false;
+                if (id === 'btnRight') touchKeys.right = false;
+            });
+        });
+        document.getElementById('btnLightPunch')?.addEventListener('touchstart', e => { e.preventDefault(); if (player1) player1.attack('lightPunch'); });
+        document.getElementById('btnHeavyPunch')?.addEventListener('touchstart', e => { e.preventDefault(); if (player1) player1.attack('heavyPunch'); });
+        document.getElementById('btnLightKick')?.addEventListener('touchstart', e => { e.preventDefault(); if (player1) player1.attack('lightKick'); });
+        document.getElementById('btnHeavyKick')?.addEventListener('touchstart', e => { e.preventDefault(); if (player1) player1.attack('heavyKick'); });
+        document.getElementById('btnSpecial')?.addEventListener('touchstart', e => { e.preventDefault(); if (player1) player1.specialAttack(); });
+    }
+
+    function startGame() {
+        document.getElementById('startScreen').style.display = 'none';
+        document.getElementById('selectScreen').style.display = 'flex';
+        const div = document.getElementById('playerSelect');
+        div.innerHTML = '';
+        CHARACTERS.forEach((char, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'char-btn' + (i === selectedChar ? ' selected' : '');
+            btn.innerHTML = `<span class="char-icon">${char.icon}</span>${char.name}`;
+            btn.onclick = () => { document.querySelectorAll('.char-btn').forEach(b => b.classList.remove('selected')); btn.classList.add('selected'); selectedChar = i; };
+            div.appendChild(btn);
+        });
+    }
+
+    function startFight() {
+        document.getElementById('selectScreen').style.display = 'none';
+        player1 = new Fighter(CHARACTERS[selectedChar], 150, true);
+        player2 = new Fighter(CHARACTERS[(selectedChar + 2) % 4], BASE_WIDTH - 214, false);
+        gameState = 'fight';
+        timer = 99;
+        gameLoop();
+    }
+
+    let aiTimer = 0;
+    function gameLoop() {
+        if (gameState !== 'fight') return;
+
+        if (keys['a'] || keys['arrowleft'] || touchKeys.left) player1.moveLeft();
+        if (keys['d'] || keys['arrowright'] || touchKeys.right) player1.moveRight();
+
+        aiTimer++;
+        if (aiTimer > 30) {
+            aiTimer = 0;
+            if (player2.x < player1.x - 50) player2.moveRight();
+            else if (player2.x > player1.x + 50) player2.moveLeft();
+            if (Math.random() < 0.3) player2.attack(['lightPunch', 'heavyPunch', 'lightKick', 'heavyKick'][Math.floor(Math.random() * 4)]);
+            if (player2.specialMeter >= 100 && Math.random() < 0.2) player2.specialAttack();
+        }
+
+        player1.update(player2);
+        player2.update(player1);
+
+        checkHit(player1, player2);
+        checkHit(player2, player1);
+
+        render();
+
+        if (player1.isDead || player2.isDead) {
+            gameState = 'over';
+            setTimeout(() => {
+                document.getElementById('winnerText').textContent = player1.isDead ? '电脑胜利!' : '玩家胜利!';
+                document.getElementById('gameOverScreen').style.display = 'flex';
+            }, 1000);
+            return;
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    function checkHit(attacker, defender) {
+        const abox = attacker.getAttackBox();
+        const dbox = defender.getHitbox();
+        if (!abox || !dbox) return;
+        if (abox.x < dbox.x + dbox.width && abox.x + abox.width > dbox.x &&
+            abox.y < dbox.y + dbox.height && abox.y + abox.height > dbox.y) {
+            defender.takeDamage(attacker.attackDamage);
+            attacker.specialMeter = Math.min(100, attacker.specialMeter + 5);
+        }
+    }
+
+    function render() {
+        ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0,0,BASE_WIDTH,BASE_HEIGHT);
+        ctx.fillStyle = '#2c3e50'; ctx.fillRect(0,GROUND_Y,BASE_WIDTH,BASE_HEIGHT-GROUND_Y);
+        ctx.fillStyle = '#e74c3c'; ctx.fillRect(0,GROUND_Y,BASE_WIDTH,4);
+
+        player1.draw();
+        player2.draw();
+
+        ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0,0,BASE_WIDTH,70);
+        drawBar(20,15,350,25,player1.hp,player1.maxHp,player1.char.color);
+        drawBar(BASE_WIDTH-370,15,350,25,player2.hp,player2.maxHp,player2.char.color);
+        drawBar(20,45,150,12,player1.specialMeter,100,'#f1c40f');
+        drawBar(BASE_WIDTH-170,45,150,12,player2.specialMeter,100,'#f1c40f');
+
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 28px Courier'; ctx.textAlign = 'center';
+        ctx.fillText(timer.toString().padStart(2,'0'), BASE_WIDTH/2, 42);
+        ctx.font = '16px Courier';
+        ctx.fillText(player1.char.name, 25, 12);
+        ctx.textAlign = 'right'; ctx.fillText(player2.char.name, BASE_WIDTH-25, 12);
+    }
+
+    function drawBar(x,y,w,h,cur,max,color) {
+        ctx.fillStyle = '#333'; ctx.fillRect(x,y,w,h);
+        ctx.fillStyle = color; ctx.fillRect(x+2,y+2,(w-4)*(cur/max),h-4);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x,y,w,h);
+    }
+
+    function restartGame() {
+        document.getElementById('gameOverScreen').style.display = 'none';
+        startFight();
+    }
+
+    function backToHome() {
+        window.location.href = 'index.html';
+    }
+
+    window.onload = init;
+    </script>
+</body>
+</html>
